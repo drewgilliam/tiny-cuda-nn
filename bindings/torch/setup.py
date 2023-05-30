@@ -38,8 +38,24 @@ print(f"Building PyTorch extension for tiny-cuda-nn version {VERSION}")
 
 ext_modules = []
 
-if "TCNN_CUDA_ARCHITECTURES" in os.environ and os.environ["TCNN_CUDA_ARCHITECTURES"]:
-	compute_capabilities = [int(x) for x in os.environ["TCNN_CUDA_ARCHITECTURES"].replace(";", ",").split(",")]
+TCNN_CUDA_ARCHITECTURES = os.getenv("TCNN_CUDA_ARCHITECTURES")
+if TCNN_CUDA_ARCHITECTURES.lower() == 'torch':
+	# special "torch" flag to compile tiny-cuda-nn bindings using the same cuda
+	# architectures as used to compile PyTorch
+	#
+	# We would normally use `torch.cuda.get_arch_list()`, but that function
+	# unfortunately uses `torch.cuda.is_available()` which requires a CUDA
+	# device to be present (not the case in a docker build environment).
+	#
+	# Instead, check for the CUDA backend using `torch.cuda._is_compiled()`,
+	# and retrieve architectures using `torch._C._cuda_getArchFlags()`
+	if not torch.cuda._is_compiled():
+		raise EnvironmentError("TCNN_CUDA_ARCHITECTURES=torch requires PyTorch with the CUDA backend.")
+	compute_capabilities = [int(x.split('_')[-1]) for x in torch._C._cuda_getArchFlags().split()]
+	print(f"Obtained compute capabilities {compute_capabilities} from PyTorch CUDA architectures")
+
+elif TCNN_CUDA_ARCHITECTURES:
+	compute_capabilities = [int(x) for x in TCNN_CUDA_ARCHITECTURES.replace(";", ",").split(",")]
 	print(f"Obtained compute capabilities {compute_capabilities} from environment variable TCNN_CUDA_ARCHITECTURES")
 elif torch.cuda.is_available():
 	major, minor = torch.cuda.get_device_capability()
